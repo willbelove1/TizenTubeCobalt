@@ -1,0 +1,123 @@
+/* styles.css */
+.error-notification, .notification, .search-indicator, .listening-indicator {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 10px 20px;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  border-radius: 5px;
+  z-index: 1000;
+  font-family: sans-serif; /* Basic font for readability */
+  font-size: 14px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  opacity: 1;
+  transition: opacity 0.5s ease-out;
+}
+
+.error-notification {
+  background: rgba(220, 53, 69, 0.9); /* A common bootstrap danger color, slightly adjusted */
+  border-left: 5px solid #b22222; /* Darker red border */
+}
+
+.notification { /* General purpose notification, if different from error */
+  background: rgba(25, 135, 84, 0.9); /* A common bootstrap success color */
+  border-left: 5px solid #146c43;
+}
+
+/* Example for other indicators if they share common styling */
+.search-indicator {
+  background: rgba(13, 110, 253, 0.8); /* A common bootstrap info color */
+}
+
+.listening-indicator {
+  background: rgba(255, 193, 7, 0.8); /* A common bootstrap warning color */
+  color: #333; /* Darker text for light background */
+}
+
+/* Style for the seek feedback in GestureController */
+.seek-feedback {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 10px 15px;
+  border-radius: 8px;
+  font-size: 1.5em;
+  z-index: 1001; /* Ensure it's above video but potentially below other system popups */
+  pointer-events: none; /* So it doesn't interfere with other gestures */
+}
+
+/* Styles for Parental Controls example (can be expanded) */
+.parental-controls {
+  max-width: 400px;
+  margin: 20px auto; /* Centered */
+  padding: 20px;
+  background: #2c2c2c; /* Darker background */
+  color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+}
+
+.parental-controls h3 {
+  margin-top: 0;
+  color: #eee;
+}
+
+.parental-controls label {
+  display: block;
+  margin-top: 15px;
+  margin-bottom: 5px;
+  color: #ccc;
+}
+
+.parental-controls input[type="text"],
+.parental-controls input[type="number"],
+.parental-controls input[type="time"],
+.parental-controls input[type="password"],
+.parental-controls select {
+  width: calc(100% - 16px); /* Account for padding */
+  padding: 8px;
+  margin-bottom: 10px; /* Consistent margin */
+  background-color: #3f3f3f;
+  color: white;
+  border: 1px solid #555;
+  border-radius: 4px;
+  box-sizing: border-box; /* Ensures padding doesn't expand width */
+}
+
+.parental-controls button {
+  background-color: #007bff;
+  color: white;
+  padding: 10px 15px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-top: 10px;
+}
+
+.parental-controls button:hover {
+  background-color: #0056b3;
+}
+
+/* Hiding elements, e.g. for parental controls */
+.video-item[style*="display: none;"] {
+  /* Could add specific styling for hidden items if needed for debugging, otherwise just display:none is fine */
+}
+
+.unused {
+  /* Styles for elements marked as unused by MemoryManager, if any visual indication is needed before removal */
+}
+
+/* Styles for ::cue (subtitles) - from SubtitleManager */
+/* These will be dynamically injected by SubtitleManager, but good to have a base here for reference */
+/*
+::cue {
+  font-size: 16px; // Default, will be overridden by JS
+  color: #ffffff; // Default
+  background: rgba(0,0,0,0.7); // Default
+  // position property is more complex, handled by JS
+}
+*/
