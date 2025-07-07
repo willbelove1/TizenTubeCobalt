@@ -1,83 +1,59 @@
 // watch-history.js
 import { ErrorHandler } from './error-handler.js';
-
-// Placeholder for IndexedDB operations until a proper wrapper (like 'idb') is integrated.
-// Using the same SimpleIndexedDBWrapper from cache-manager.js for consistency in this phase.
-class SimpleIndexedDBWrapper {
-  constructor(dbName, version, upgradeCallback) {
-    this.dbName = dbName;
-    this.version = version;
-    this.stores = new Map(); // storeName -> Map(key -> value)
-    if (upgradeCallback) {
-      const simulatedDB = {
-        createObjectStore: (storeName, options) => {
-          if (!this.stores.has(storeName)) {
-            this.stores.set(storeName, new Map());
-            console.log(`[SimpleIndexedDBWrapper] Mock store created: ${storeName}`, options);
-          }
-        },
-        objectStoreNames: { // Mocking objectStoreNames for the constructor check
-            contains: (storeName) => this.stores.has(storeName)
-        }
-      };
-      upgradeCallback(simulatedDB);
-    }
-    console.log(`[SimpleIndexedDBWrapper] Mock DB initialized for ${dbName} v${version}`);
-  }
-  async _getStore(storeName) {
-    if (!this.stores.has(storeName)) throw new Error(`Store ${storeName} does not exist in mock DB.`);
-    return this.stores.get(storeName);
-  }
-  async get(storeName, key) { /* ... see cache-manager.js for mock ... */
-    const store = await this._getStore(storeName); return store.get(key);
-  }
-  async put(storeName, value, key) { /* ... see cache-manager.js for mock ... */
-    const store = await this._getStore(storeName);
-    const effectiveKey = key || value.videoId || value.id; // WatchHistory uses videoId as key sometimes
-    if(typeof effectiveKey === 'undefined') throw new Error('Cannot put value without a key or id/videoId property.');
-    store.set(effectiveKey, value);
-  }
-  async delete(storeName, key) { /* ... see cache-manager.js for mock ... */
-    const store = await this._getStore(storeName); store.delete(key);
-  }
-  async getAll(storeName) { /* ... see cache-manager.js for mock ... */
-    const store = await this._getStore(storeName); return Array.from(store.values());
-  }
-  async count(storeName) { /* ... see cache-manager.js for mock ... */
-    const store = await this._getStore(storeName); return store.size;
-  }
-}
-
+import { openDB } from 'idb'; // Import openDB from idb library
 
 class WatchHistory {
   constructor() {
     this.dbName = 'watch-history';
     this.storeName = 'history';
+    this.dbVersion = 1;
     this.maxEntries = 10000;
 
+    this.dbPromise = this._initDB().catch(error => {
+        console.error('[WatchHistory.constructor] Critical DB initialization failed:', error);
+        ErrorHandler.handle(error, 'WatchHistory.constructor.critical', 'Không thể khởi tạo database lịch sử xem. Tính năng lịch sử xem sẽ bị vô hiệu hóa.');
+        return null;
+    });
+    console.log('[WatchHistory] Initialized, attempting to open IndexedDB.');
+  }
+
+  async _initDB() {
     try {
-      this.dbPromise = new SimpleIndexedDBWrapper(this.dbName, 1, (db) => {
-        if (!db.objectStoreNames || !db.objectStoreNames.contains(this.storeName)) {
-          // The original spec implies videoId might be the key.
-          // If entries are uniquely identified by videoId + timestamp, a compound key or auto-incrementing key is better.
-          // For now, let's assume 'id' (e.g., videoId_timestamp) or rely on explicit key for put.
-          // The original spec's cleanup `delete('history', item.videoId)` suggests videoId is a key.
-          // Let's assume a unique `entry.id` will be generated for each history record.
-          db.createObjectStore(this.storeName, { keyPath: 'id' });
+      return await openDB(this.dbName, this.dbVersion, {
+        upgrade(db, oldVersion, newVersion, transaction) {
+          console.log(`[WatchHistory] Upgrading DB from v${oldVersion} to v${newVersion}`);
+          if (!db.objectStoreNames.contains(this.storeName)) {
+            const store = db.createObjectStore(this.storeName, { keyPath: 'id' });
+            // Create indexes for efficient querying and cleanup
+            store.createIndex('timestamp', 'timestamp', { unique: false });
+            store.createIndex('videoId', 'videoId', { unique: false });
+            store.createIndex('completionRate', 'completionRate', { unique: false });
+            console.log(`[WatchHistory] Object store '${this.storeName}' created with indexes: timestamp, videoId, completionRate.`);
+          }
+          // Handle other version upgrades here
+        },
+        blocked() {
+            ErrorHandler.handle(new Error('IndexedDB blocked for WatchHistory'), 'WatchHistory._initDB.blocked', 'Cơ sở dữ liệu lịch sử xem bị chặn, vui lòng đóng các tab khác của ứng dụng.');
+        },
+        blocking() {
+            ErrorHandler.handle(new Error('IndexedDB blocking for WatchHistory'), 'WatchHistory._initDB.blocking', 'Cơ sở dữ liệu lịch sử xem đang chờ được đóng ở tab khác.');
+        },
+        terminated() {
+            ErrorHandler.handle(new Error('IndexedDB terminated for WatchHistory'), 'WatchHistory._initDB.terminated', 'Kết nối cơ sở dữ liệu lịch sử xem đã bị chấm dứt đột ngột.');
         }
       });
     } catch (error) {
-      ErrorHandler.handle(error, 'WatchHistory.constructor', 'Không thể khởi tạo database lịch sử xem.');
-      this.dbPromise = null;
+      ErrorHandler.handle(error, 'WatchHistory._initDB', 'Lỗi nghiêm trọng khi mở IndexedDB cho lịch sử xem.');
+      throw error;
     }
-    console.log('[WatchHistory] Initialized.');
   }
 
   async _getDB() {
-      if (!this.dbPromise) {
-          throw new Error("WatchHistory DB not initialized.");
-      }
-      return this.dbPromise;
+    const db = await this.dbPromise;
+    if (!db) {
+      throw new Error("WatchHistory DB not available or initialization failed.");
+    }
+    return db;
   }
 
   /**

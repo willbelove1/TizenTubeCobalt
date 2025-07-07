@@ -17,15 +17,52 @@ class ParentalControls {
     this.watchTimeTodaySeconds = 0; // Tracks watch time for the current day
     this.watchTimeIntervalId = null;
     this.restrictedHoursIntervalId = null;
+    this.uiContainer = null; // To store the main UI container element
+    this.sessionPinVerified = false; // Track if PIN was verified in current UI interaction session
 
     this._loadState(); // Load saved restrictions and today's watch time
 
     if (this.restrictions.isEnabled) {
-        this.applyRestrictions(); // Apply immediately if enabled
+        // Defer applyRestrictions until UI is potentially rendered or if called explicitly
+        // this.applyRestrictions();
         this.startWatchTimeTracking();
         this.startRestrictedHoursMonitoring();
     }
     console.log('[ParentalControls] Initialized. Current restrictions:', this.restrictions);
+  }
+
+  // DOM Element creator helper
+  _createElement(tag, options = {}) {
+    const el = document.createElement(tag);
+    if (options.className) el.className = options.className;
+    if (options.id) el.id = options.id;
+    if (options.type) el.type = options.type;
+    if (options.textContent) el.textContent = options.textContent;
+    if (options.innerHTML) el.innerHTML = options.innerHTML;
+    if (options.value !== undefined) el.value = options.value; // Check for undefined to allow empty string value
+    if (options.placeholder) el.placeholder = options.placeholder;
+    if (options.checked !== undefined) el.checked = options.checked;
+    if (options.disabled !== undefined) el.disabled = options.disabled;
+    if (options.min) el.min = options.min;
+    if (options.max) el.max = options.max;
+    if (options.step) el.step = options.step;
+    if (options.htmlFor) el.htmlFor = options.htmlFor;
+
+
+    if (options.attributes) {
+        for (const [attr, value] of Object.entries(options.attributes)) {
+            el.setAttribute(attr, value);
+        }
+    }
+    if (options.children) {
+        options.children.forEach(child => child && el.appendChild(child));
+    }
+    if (options.eventListeners) {
+        for (const [event, listener] of Object.entries(options.eventListeners)) {
+            el.addEventListener(event, listener.bind(this)); // Bind 'this' context
+        }
+    }
+    return el;
   }
 
   _loadState() {
