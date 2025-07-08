@@ -5,58 +5,82 @@ import subprocess
 
 class CobaltIntegration:
     def __init__(self):
-        self.config = self.load_config()
-        self.build_dir = self.config.get('build_dir', 'build')
-        # Ensure output_dir from config is used, falling back to 'dist'
-        # This 'dist' should match webpack's output.path
-        self.output_dir = self.config.get('output_dir', 'dist')
-        self.cobalt_path = self.config.get('cobalt_path', None) # Will be validated before use
+        self.config = self.load_config() # load_config will handle exit if critical paths are missing
+
+        self.build_dir = self.config.get('build_dir', 'out/default')
+        self.output_dir = self.config.get('output_dir', 'dist') # This should match Webpack's output path
+        self.cobalt_path = self.config.get('cobalt_path')
         self.platform = self.config.get('platform', 'tizen')
-        self.build_flags = self.config.get('build_flags', []) # Get build_flags
+        self.build_flags = self.config.get('build_flags', [])
+
+        # COBALT_APP_CONTENT_PATH is where Webpack's output (e.g. dist/) is copied to by the CI.
+        # This path is then used by Cobalt's build system or for packaging.
+        self.cobalt_app_content_path_for_build = os.getenv('COBALT_APP_CONTENT_PATH')
+        if not self.cobalt_app_content_path_for_build:
+            # For CI, this MUST be set by the workflow after copying Webpack's dist.
+            # This path is critical for packaging and potentially for the Cobalt build itself.
+            print("Error: COBALT_APP_CONTENT_PATH environment variable not set.")
+            print("This variable should point to the directory containing the Webpack output (e.g., where 'dist/' was copied).")
+            print("Aborting script.")
+            exit(1)
+        elif not os.path.isdir(self.cobalt_app_content_path_for_build):
+            print(f"Error: COBALT_APP_CONTENT_PATH ('{self.cobalt_app_content_path_for_build}') is not a valid directory.")
+            print("Aborting script.")
+            exit(1)
+        else:
+            print(f"Using COBALT_APP_CONTENT_PATH from environment: {self.cobalt_app_content_path_for_build}")
 
     def load_config(self):
+        config_file_path = os.getenv('COBALT_CONFIG_PATH', 'cobalt_config.json')
+        default_config = {
+            'build_dir': 'out/default',
+            'output_dir': 'dist',
+            'cobalt_path': None,
+            'platform': 'tizen',
+            'build_flags': [],
+            'main_js_bundle_name': 'main.bundle.js' # Default name, can be overridden in config
+        }
         try:
-            with open('cobalt_config.json', 'r') as f:
+            with open(config_file_path, 'r') as f:
                 config_data = json.load(f)
-                print("Loaded cobalt_config.json successfully.")
+                print(f"Loaded configuration from {config_file_path} successfully.")
+                # Ensure essential keys have fallbacks if missing in the loaded config
+                for key, value in default_config.items():
+                    config_data.setdefault(key, value)
+
+                if not config_data.get('cobalt_path'):
+                    print(f"Error: 'cobalt_path' is not defined in {config_file_path}.")
+                    print("Please ensure 'cobalt_path' points to your Cobalt checkout directory.")
+                    exit(1)
+                if not os.path.isdir(config_data['cobalt_path']):
+                    print(f"Error: 'cobalt_path' ('{config_data['cobalt_path']}') in {config_file_path} is not a valid directory.")
+                    exit(1)
+
                 return config_data
         except FileNotFoundError:
-            print("Warning: cobalt_config.json not found. Using default configuration.")
-            return {
-                'build_dir': 'build',
-                'output_dir': 'dist',
-                'cobalt_path': None, # Default to None, requires user setup
-                'platform': 'tizen',
-                'build_flags': [] # Default to empty list
-            }
+            print(f"Error: Configuration file '{config_file_path}' not found.")
+            print("Please create it or ensure COBALT_CONFIG_PATH env var is set correctly.")
+            exit(1)
         except json.JSONDecodeError as e:
-            print(f"Error decoding cobalt_config.json: {e}. Using default configuration.")
-            return {
-                'build_dir': 'build',
-                'output_dir': 'dist',
-                'cobalt_path': None,
-                'platform': 'tizen',
-                'build_flags': []
-            }
+            print(f"Error decoding {config_file_path}: {e}. Aborting.")
+            exit(1)
 
-    def _run_subprocess(self, command_args, operation_name="Subprocess"):
+    def _run_subprocess(self, command_args, operation_name="Subprocess", cwd=None):
         """Helper to run subprocesses and handle errors."""
-        print(f"Running: {' '.join(command_args)}")
+        effective_cwd = cwd if cwd else os.getcwd()
+        print(f"Running: {' '.join(command_args)} (in {effective_cwd})")
         try:
-            result = subprocess.run(command_args, check=True, capture_output=True, text=True)
+            result = subprocess.run(command_args, check=True, capture_output=True, text=True, cwd=effective_cwd)
             if result.stdout:
                 print(f"{operation_name} STDOUT:\n{result.stdout}")
-            if result.stderr: # Ninja often prints to stderr even on success
+            if result.stderr:
                 print(f"{operation_name} STDERR:\n{result.stderr}")
             print(f"{operation_name} completed successfully.")
             return True
         except subprocess.CalledProcessError as e:
             print(f"{operation_name} failed. Return code: {e.returncode}")
-            if e.stdout:
-                print(f"STDOUT:\n{e.stdout}")
-            if e.stderr:
-                print(f"STDERR:\n{e.stderr}")
-            # No raise here, main script will decide to continue or not
+            if e.stdout: print(f"STDOUT:\n{e.stdout}")
+            if e.stderr: print(f"STDERR:\n{e.stderr}")
             return False
         except FileNotFoundError:
             print(f"{operation_name} failed: Command '{command_args[0]}' not found. Ensure it's in your PATH.")
@@ -66,55 +90,79 @@ class CobaltIntegration:
             return False
 
     def build_cobalt(self):
-        if not self.cobalt_path or not os.path.isdir(self.cobalt_path):
-            print(f"Error: Cobalt path '{self.cobalt_path}' is not valid or not configured in cobalt_config.json. Cannot build Cobalt.")
-            return False
+        # Pre-build check: Ensure essential web assets (e.g., main JS bundle) are in COBALT_APP_CONTENT_PATH_FOR_BUILD
+        # This is important if Cobalt's GN/Ninja setup directly references these files during its compile/link phases.
+        main_bundle_name = self.config.get('main_js_bundle_name', 'main.bundle.js') # Get from config or default
+        # If webpack uses contenthash, the exact name might vary. `main.*.js` could be a pattern.
+        # For simplicity, expect a known name or that `dist` contains one main JS.
+        expected_bundle_path = os.path.join(self.cobalt_app_content_path_for_build, main_bundle_name)
 
-        # Construct the build command including any build_flags
-        # Example: ninja -C out/linux-x64x11 cobalt_install --tizen --release
-        # The target 'cobalt_install' or similar might be needed instead of just 'cobalt_platform'
-        # if the build system generates installable artifacts in a specific step.
-        # For now, assuming 'cobalt_{self.platform}' is the correct target.
-        build_target = f'cobalt_{self.platform}' # This might need to be more specific like 'cobalt_install'
-        command = ['ninja', '-C', os.path.join(self.cobalt_path, self.build_dir)]
-        command.extend(self.build_flags) # Add configured build flags
+        # A more robust check might look for any *.bundle.js if names are hashed.
+        # For now, we check for the specific or default name.
+        found_bundle = os.path.isfile(expected_bundle_path)
+        if not found_bundle:
+            # Try finding any file matching main.*.js pattern if specific name not found
+            if main_bundle_name == 'main.bundle.js': # Only if default was used
+                 alt_bundle_pattern = os.path.join(self.cobalt_app_content_path_for_build, "main.*.js")
+                 import glob
+                 matching_files = glob.glob(alt_bundle_pattern)
+                 if matching_files:
+                     print(f"Found potential main bundle: {matching_files[0]}")
+                     found_bundle = True
+
+        if not found_bundle:
+            print(f"Error: Main JS bundle ('{main_bundle_name}' or pattern 'main.*.js') not found in COBALT_APP_CONTENT_PATH: {self.cobalt_app_content_path_for_build}")
+            print("Ensure Webpack output has been copied to this location before Cobalt build.")
+            return False
+        print(f"Verified JS bundle presence in {self.cobalt_app_content_path_for_build}.")
+
+        # The ninja command should be run from within the cobalt_path, and -C points to the build output directory.
+        ninja_cwd = self.cobalt_path
+        ninja_build_dir_abs = os.path.join(self.cobalt_path, self.build_dir)
+
+        build_target = f'cobalt_{self.platform}'
+        command = ['ninja', '-C', ninja_build_dir_abs] # -C path is relative to where ninja is run, or absolute
+        command.extend(self.build_flags)
         command.append(build_target)
 
-        return self._run_subprocess(command, "Cobalt Build")
+        return self._run_subprocess(command, "Cobalt Build", cwd=ninja_cwd)
 
     def package_app(self):
+        # Create the main output directory (e.g., ./dist) if it doesn't exist
+        # This is where the .wgt file will be placed.
         if not os.path.exists(self.output_dir):
-            print(f"Creating output directory: {self.output_dir}")
+            print(f"Creating main output directory: {self.output_dir}")
             os.makedirs(self.output_dir, exist_ok=True)
 
-        # Determine the source of packaged content. This is highly dependent on Cobalt's build output.
-        # It's usually a specific directory within cobalt_path/build_dir/platform_out_dir/
-        # For example: cobalt/out/tizen_arm_debug/content_shell_content
-        # The original f'{self.build_dir}/cobalt' is likely too generic.
-        # This path needs to point to the directory containing the Cobalt application
-        # bundle (e.g., HTML, JS, CSS, manifest.json for a web app).
-        # Let's assume for now it's a 'content' subfolder in the build output.
-
-        # This path needs to be accurate based on where `ninja` puts the build output for packaging
-        # e.g., os.path.join(self.cobalt_path, self.build_dir, 'out', self.platform + "_some_config", "app_content_folder")
-        # For now, using a placeholder that needs verification:
-        cobalt_app_content_path = os.path.join(self.cobalt_path, self.build_dir, "app_to_package")
-
-        if not os.path.isdir(cobalt_app_content_path):
-            print(f"Error: Cobalt application content path not found: {cobalt_app_content_path}. Cannot package.")
-            print("Please ensure this path points to the directory containing the built Cobalt application (HTML, JS, assets).")
+        # The source for packaging is `self.cobalt_app_content_path_for_build`
+        # This directory should contain everything needed for the WGT: HTML, JS, CSS, manifest, icons etc.
+        # It's populated by the CI step that copies Webpack's `dist/` output.
+        if not os.path.isdir(self.cobalt_app_content_path_for_build):
+            print(f"Error: Cobalt application content path not found: {self.cobalt_app_content_path_for_build}. Cannot package.")
             return False
+
+        # Check for a manifest file, common for Tizen web apps
+        # Cobalt might generate this, or it might be part of the Webpack output.
+        expected_manifest_path = os.path.join(self.cobalt_app_content_path_for_build, 'config.xml') # Tizen WGT manifest
+        if not os.path.isfile(expected_manifest_path):
+             # Some projects might use manifest.json and tizen CLI converts or uses it.
+             alt_manifest_path = os.path.join(self.cobalt_app_content_path_for_build, 'manifest.json')
+             if not os.path.isfile(alt_manifest_path):
+                print(f"Warning: Tizen manifest (config.xml or manifest.json) not found in {self.cobalt_app_content_path_for_build}. Packaging might fail or be incomplete.")
+             else:
+                print(f"Found manifest.json at {alt_manifest_path}.")
+        else:
+            print(f"Found config.xml at {expected_manifest_path}.")
+
 
         output_wgt_path = os.path.join(self.output_dir, 'tizentube.wgt')
 
-        # The Tizen CLI package command usually takes the source directory directly.
-        # The '--' is used to separate tizen options from source path if path could be mistaken for an option.
         command = [
             'tizen', 'package',
-            '-t', 'wgt', # Type Web Tizen package
-            '-o', output_wgt_path, # Output .wgt file path
-            '--', # End of tizen options marker
-            cobalt_app_content_path # Path to the content to be packaged
+            '-t', 'wgt',
+            '-o', os.path.abspath(output_wgt_path), # tizen CLI prefers absolute path for output
+            '--',
+            self.cobalt_app_content_path_for_build
         ]
         return self._run_subprocess(command, "Tizen Packaging")
 
@@ -131,72 +179,57 @@ class CobaltIntegration:
         command = [
             'tizen', 'install',
             '-t', device_ip,
-            '-n', os.path.basename(wgt_file_path), # Name of the package file
-            '--path', os.path.abspath(self.output_dir) # Path to the directory containing the .wgt
+            '-n', os.path.basename(wgt_file_path),
+            '--path', os.path.abspath(self.output_dir)
         ]
         return self._run_subprocess(command, "Tizen Deploy")
 
     def run_tests(self):
         if not self.cobalt_path or not os.path.isdir(self.cobalt_path):
-            print(f"Cobalt path '{self.cobalt_path}' is not valid. Skipping tests.")
+            print(f"Cobalt path '{self.cobalt_path}' is not valid (from config). Skipping tests.")
+            return False # Indicate tests were skipped due to config issue
+
+        # Path to test runner can be made configurable in cobalt_config.json
+        default_test_script_rel_path = os.path.join('starboard', 'tools', 'testing', 'test_runner.py')
+        test_script_path_config = self.config.get('test_runner_script', default_test_script_rel_path)
+        test_script_abs_path = os.path.join(self.cobalt_path, test_script_path_config)
+
+        if not os.path.isfile(test_script_abs_path):
+            print(f"Cobalt test script not found at '{test_script_abs_path}'. Please check 'cobalt_path' and 'test_runner_script' in config. Skipping tests.")
             return False
-
-        test_script_path = os.path.join(self.cobalt_path, 'starboard', 'tools', 'testing', 'test_runner.py') # Example path
-        # Or, if it's the one from the original example:
-        # test_script_path = os.path.join(self.cobalt_path, 'tests', 'run_tests.py')
-
-        if not os.path.isfile(test_script_path):
-            print(f"Cobalt test script not found at '{test_script_path}'. Please check 'cobalt_path' in config. Skipping tests.")
-            return False
-
-        # Tests might need the build output directory
-        # This also depends on the specific test runner.
-        # cobalt_build_output = os.path.join(self.cobalt_path, self.build_dir) # Example
 
         command = [
             'python3',
-            test_script_path,
+            test_script_abs_path,
             '--platform', self.platform
-            # Add other necessary test arguments like:
-            # '--out_dir', cobalt_build_output,
-            # '--target_name', 'tests_target_name'
         ]
-        return self._run_subprocess(command, "Cobalt Tests")
+        # Add other test arguments from config if specified
+        test_args = self.config.get('test_args', [])
+        command.extend(test_args)
+
+        return self._run_subprocess(command, "Cobalt Tests", cwd=self.cobalt_path) # Run tests from cobalt_path
 
 def main():
     print("Starting TizenTube Cobalt Integration Script...")
-    integrator = CobaltIntegration()
+    integrator = CobaltIntegration() # Constructor now handles critical config checks and exits if needed
 
-    if not integrator.cobalt_path:
-        print("Error: 'cobalt_path' is not defined in cobalt_config.json or the file is missing.")
-        print("Please create cobalt_config.json with a valid 'cobalt_path' pointing to your Cobalt checkout directory.")
-        print("Example cobalt_config.json:")
-        print("""
-{
-  "build_dir": "out/my_tizen_build",
-  "output_dir": "dist",
-  "cobalt_path": "/path/to/your/cobalt/checkout",
-  "platform": "tizen-arm",
-  "build_flags": ["-- MyAppSpecificFlag"]
-}
-""")
-        return
-
+    print("\nBuilding Cobalt application...")
     if not integrator.build_cobalt():
         print("Cobalt build failed. Aborting subsequent steps.")
-        return
+        exit(1)
 
+    print("\nPackaging Tizen WGT application...")
     if not integrator.package_app():
         print("Application packaging failed. Aborting subsequent steps.")
-        return
+        exit(1)
 
+    print("\nRunning Cobalt tests...")
     if not integrator.run_tests():
-        print("Tests failed or were skipped.")
-        # Decide if failure here should abort deployment
-        # For now, we'll proceed to deploy even if tests fail/skipped, but log it.
+        print("Tests failed or were skipped. Continuing with deployment if configured...")
+        # Depending on policy, you might want to exit(1) here if tests are mandatory for release
+    else:
+        print("Cobalt tests passed or were skipped successfully.")
 
-    # --- Deployment (Optional) ---
-    # To enable deployment, configure device_ip in cobalt_config.json or pass as arg
     device_target_ip = integrator.config.get('device_ip', None)
     if device_target_ip:
         print(f"\nAttempting to deploy to device: {device_target_ip}...")
@@ -208,7 +241,7 @@ def main():
         print("\nDevice IP not configured in cobalt_config.json (key: 'device_ip'). Skipping deployment.")
         print(f"Packaged application is available at: {os.path.join(integrator.output_dir, 'tizentube.wgt')}")
 
-    print("\nIntegration script finished.")
+    print("\nIntegration script finished successfully.")
 
 if __name__ == '__main__':
     main()
