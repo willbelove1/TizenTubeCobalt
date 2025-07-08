@@ -26,6 +26,10 @@ class SubtitleManager {
     };
     console.log('[SubtitleManager] Initialized.');
     this.applyStyles(); // Apply initial styles
+
+    // Cache for translateText results
+    this.translationCache = new Map();
+    this.MAX_CACHE_SIZE = 50; // Store up to 50 translations
   }
 
   async autoTranslate(targetLang) {
@@ -67,7 +71,18 @@ class SubtitleManager {
   }
 
   async translateText(text, targetLang) {
-    console.log(`[SubtitleManager] Calling translation API for text: "${text}", targetLang: ${targetLang}`);
+    const cacheKey = `${targetLang}::${text}`;
+    if (this.translationCache.has(cacheKey)) {
+      const cachedEntry = this.translationCache.get(cacheKey);
+      // If storing promises, return the promise. If storing resolved data, return that.
+      // For simplicity, let's assume we store resolved data and update timestamp for LRU.
+      cachedEntry.lastAccessed = Date.now();
+      this.translationCache.set(cacheKey, cachedEntry); // Update position for LRU if implemented that way
+      console.log(`[SubtitleManager] Translation cache HIT for: "${text.substring(0,30)}..." -> ${targetLang}`);
+      return cachedEntry.data;
+    }
+    console.log(`[SubtitleManager] Translation cache MISS. Calling API for text: "${text.substring(0,30)}..." -> ${targetLang}`);
+
     const apiKey = 'YOUR_GEMINI_API_KEY'; // Placeholder
     if (apiKey === 'YOUR_GEMINI_API_KEY') {
         const keyError = new Error('Gemini API key not configured for SubtitleManager.');
@@ -76,31 +91,47 @@ class SubtitleManager {
     }
 
     try {
-      // As per user spec, fetchWithRetry expects JSON response.
-      // Gemini translate API might return structured data.
-      const responseData = await fetchWithRetry(this.apiEndpoint, {
+      const translationPromise = fetchWithRetry(this.apiEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`
         },
-        body: JSON.stringify({ text, targetLang }) // Assuming this is what Gemini expects
+        body: JSON.stringify({ text, targetLang })
       });
 
-      // fetchWithRetry throws on error or returns parsed JSON.
-      // If responseData is null (e.g., from a 204, though unlikely for translate), treat as error.
+      // Optional: Store promise in cache immediately to handle concurrent requests
+      // this.translationCache.set(cacheKey, { promise: translationPromise, timestamp: Date.now() });
+
+      const responseData = await translationPromise;
+
       if (responseData === null) {
+        // this.translationCache.delete(cacheKey); // Remove failed promise entry
         throw new Error('Translation API returned an empty response.');
       }
-      // Assuming Gemini returns { translatedText: "...", lang: "xx", segments: [...] }
-      // The user provided `return response;` which implies the full object.
+
       console.log('[SubtitleManager] Translation API response:', responseData);
+
+      // Cache the successful result before returning
+      if (this.translationCache.size >= this.MAX_CACHE_SIZE) {
+        // Simple LRU: find and delete the oldest entry (smallest timestamp)
+        let oldestKey = null;
+        let oldestTimestamp = Infinity;
+        for (const [key, value] of this.translationCache.entries()) {
+          if (value.timestamp < oldestTimestamp) {
+            oldestTimestamp = value.timestamp;
+            oldestKey = key;
+          }
+        }
+        if (oldestKey) this.translationCache.delete(oldestKey);
+      }
+      this.translationCache.set(cacheKey, { data: responseData, timestamp: Date.now(), lastAccessed: Date.now() });
+
       return responseData;
     } catch (error) {
-      // fetchWithRetry already calls ErrorHandler.handle on final failure.
+      // this.translationCache.delete(cacheKey); // Remove failed promise entry if that strategy was used
       console.error(`[SubtitleManager.translateText] Error connecting to translation API: ${error.message}`);
-      // ErrorHandler.handle(error, 'SubtitleManager.translateText', 'Lỗi kết nối API dịch.'); // Redundant
-      throw error; // Re-throw
+      throw error;
     }
   }
 

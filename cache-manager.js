@@ -18,6 +18,8 @@ class VideoCache {
     });
 
     this.maxSizeBytes = 2 * 1024 * 1024 * 1024; // 2GB
+    this.cleanupTimeoutId = null;
+    this.debounceTimeMs = 2000; // Run cleanup 2 seconds after the last cacheSegment call
 
     if (typeof window !== 'undefined') {
       window.cacheManager = this;
@@ -76,7 +78,20 @@ class VideoCache {
       };
       await db.put(this.storeName, segmentEntry);
       console.log(`[VideoCache] Segment ${key} cached. Size: ${segmentEntry.size}`);
-      this.cleanupOldCache().catch(err => console.error("[VideoCache] Background cleanupOldCache failed:", err)); // Run cleanup in background
+
+      // Debounce cleanupOldCache call
+      if (this.cleanupTimeoutId) {
+        clearTimeout(this.cleanupTimeoutId);
+      }
+      this.cleanupTimeoutId = setTimeout(() => {
+        this.cleanupOldCache().catch(err => {
+            console.error("[VideoCache] Debounced cleanupOldCache failed:", err);
+            // Optionally use ErrorHandler for persistent background failures if needed,
+            // but be mindful of spamming user notifications for background tasks.
+            // ErrorHandler.handle(err, 'VideoCache.debouncedCleanup', 'Lỗi dọn dẹp cache tự động.');
+        });
+      }, this.debounceTimeMs);
+
     } catch (error) {
       ErrorHandler.handle(error, 'VideoCache.cacheSegment', `Không thể cache segment ${key}.`);
     }

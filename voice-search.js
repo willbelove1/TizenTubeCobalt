@@ -217,34 +217,90 @@ class VoiceSearch {
   }
 
   showSearchIndicator(query) {
-    this._removeIndicator('.search-indicator'); // Remove previous if any
-    const indicator = document.createElement('div');
-    indicator.className = 'search-indicator';
-    indicator.textContent = `Đang tìm kiếm: "${query}"...`;
-    document.body.appendChild(indicator);
-    setTimeout(() => this._removeIndicator(indicator), 3000);
+    this._removeIndicator('.voice-search-overlay'); // Use new class, remove previous
+
+    const overlay = this._createElement('div', {
+        className: 'voice-search-overlay',
+        id: 'voice-search-overlay'
+    });
+
+    const spinner = this._createElement('div', { className: 'voice-search-spinner' });
+    // Spinner will be styled via CSS
+
+    const queryText = this._createElement('span', {
+        className: 'voice-search-query-text',
+        textContent: `Đang tìm kiếm: "${query}"...`
+    });
+
+    overlay.appendChild(spinner);
+    overlay.appendChild(queryText);
+    document.body.appendChild(overlay);
+
+    // Add 'active' class for entrance animation
+    setTimeout(() => overlay.classList.add('active'), 10);
+
+    // Original spec removed after 2s, user code for this file used 3s. Let's use 3s.
+    setTimeout(() => this._removeIndicator(overlay), 3000);
   }
 
   showListeningIndicator() {
-    this._removeIndicator('.listening-indicator'); // Remove previous if any
-    const indicator = document.createElement('div');
-    indicator.className = 'listening-indicator';
-    indicator.textContent = 'Đang nghe...';
+    this._removeIndicator('.voice-listening-indicator'); // Use new class
+
+    const indicator = this._createElement('div', {
+      className: 'voice-listening-indicator',
+      id: 'voice-listening-indicator'
+    });
+
+    const iconContainer = this._createElement('div', { className: 'voice-icon-container' });
+    // Placeholder for SVG mic icon - will be defined in CSS or as inline SVG string
+    const micIcon = this._createElement('div', { className: 'microphone-icon' });
+    // Example of inline SVG (can be complex, better as a separate constant or loaded)
+    micIcon.innerHTML = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor" width="48px" height="48px"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.39-.9.88v.28c0 2.71-2.06 4.95-4.72 5.31A5.008 5.008 0 0 1 7 17.05v-.28c0-.49-.41-.88-.9-.88s-.9.39-.9.88v.28c0 3.44 2.55 6.27 5.8 6.62V22h2v-1.27c3.25-.35 5.8-3.18 5.8-6.62v-.28c0-.49-.4-.88-.89-.88z"/></svg>`;
+
+    iconContainer.appendChild(micIcon);
+    indicator.appendChild(iconContainer);
+
+    const transcriptSpan = this._createElement('span', {
+      className: 'voice-transcript-interim',
+      textContent: 'Đang nghe...'
+    });
+    indicator.appendChild(transcriptSpan);
+
     document.body.appendChild(indicator);
+    // Add 'active' class to trigger potential entrance animations after appending
+    setTimeout(() => indicator.classList.add('active'), 10);
   }
 
   updateTranscript(transcript) {
-    const indicator = document.querySelector('.listening-indicator');
+    const indicator = document.getElementById('voice-listening-indicator');
     if (indicator) {
-      indicator.textContent = `Đang nghe: ${transcript}...`;
+      const transcriptSpan = indicator.querySelector('.voice-transcript-interim');
+      if (transcriptSpan) {
+        transcriptSpan.textContent = transcript ? `Đang nghe: ${transcript}...` : 'Đang nghe...';
+      }
     }
   }
 
-  // Generic method to remove an indicator
+  // Generic method to remove an indicator by its ID or a direct element
   _removeIndicator(selectorOrElement) {
-    const element = typeof selectorOrElement === 'string' ? document.querySelector(selectorOrElement) : selectorOrElement;
+    let element;
+    if (typeof selectorOrElement === 'string') {
+      // If it's a class selector that might match multiple, this will only remove the first.
+      // Prefer IDs for unique indicators.
+      element = document.querySelector(selectorOrElement);
+    } else if (selectorOrElement instanceof HTMLElement) {
+      element = selectorOrElement;
+    }
+
     if (element && element.parentNode) {
-      element.remove();
+      element.classList.remove('active'); // For exit animations
+      // Wait for animation before removing, or remove directly if no exit animation
+      // For simplicity, remove after a short delay.
+      setTimeout(() => {
+        if (element.parentNode) {
+            element.remove();
+        }
+      }, 300); // Corresponds to typical animation duration
     }
   }
 

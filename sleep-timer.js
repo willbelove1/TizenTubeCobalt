@@ -4,7 +4,8 @@ import { ErrorHandler } from './error-handler.js';
 class SleepTimer {
   constructor() {
     this.timers = new Map(); // Stores active timers: timerId -> timerObject
-    this.notifications = []; // Could be used to manage displayed notifications if needed beyond ErrorHandler
+    // this.notifications = []; // Original spec, not actively used by current logic.
+    this.countdownDisplayElement = null; // To hold the countdown UI element
     console.log('[SleepTimer] Initialized.');
   }
 
@@ -78,6 +79,10 @@ class SleepTimer {
     }
 
     const now = Date.now();
+  const remainingMs = Math.max(0, timer.endTime - now);
+
+  // Update countdown UI
+  this._updateCountdownUI(timerId, remainingMs);
 
     // Check warnings
     timer.warnings.forEach(warning => {
@@ -89,12 +94,75 @@ class SleepTimer {
     });
 
     // Check if timer should fire
-    if (now >= timer.endTime) {
+  if (remainingMs <= 0) { // Changed to use remainingMs
       console.log(`[SleepTimer] Timer ${timerId} fired. Executing actions.`);
+    this._removeCountdownUI(timerId); // Remove UI before actions
       this.executeTimerActions(timer.actions);
-      this.cancelTimer(timerId); // Clean up the timer
+    this.cancelTimer(timerId); // Clean up the timer (already removes UI if still there)
     }
   }
+
+_createElement(tag, options = {}) { // Simple helper, can be imported from a util if shared
+    const el = document.createElement(tag);
+    if (options.className) el.className = options.className;
+    if (options.id) el.id = options.id;
+    if (options.textContent) el.textContent = options.textContent;
+    return el;
+}
+
+_getCountdownUIId(timerId) {
+    return `sleep-timer-countdown-${timerId}`;
+}
+
+_updateCountdownUI(timerId, remainingMs) {
+    const id = this._getCountdownUIId(timerId);
+    let display = document.getElementById(id);
+
+    if (remainingMs <= 0) { // Timer fired or is past due
+        if (display) display.remove();
+        this.countdownDisplayElement = null; // Clear reference if it was this one
+        return;
+    }
+
+    if (!display) {
+        display = this._createElement('div', { id: id, className: 'sleep-timer-countdown' });
+        // Simple initial positioning, make it more robust with CSS
+        display.style.position = 'fixed';
+        display.style.top = '10px';
+        display.style.right = '10px';
+        display.style.padding = '5px 10px';
+        display.style.background = 'rgba(0,0,0,0.7)';
+        display.style.color = 'white';
+        display.style.borderRadius = '4px';
+        display.style.zIndex = '2000'; // High z-index
+        display.style.fontFamily = 'monospace';
+        document.body.appendChild(display);
+        this.countdownDisplayElement = display; // For now, only one countdown displayed. Could be a map if multiple.
+    }
+
+    // Format remaining time (e.g., HH:MM:SS or MM:SS)
+    const totalSeconds = Math.floor(remainingMs / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    let timeString = '';
+    if (hours > 0) timeString += `${String(hours).padStart(2, '0')}:`;
+    timeString += `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+    display.textContent = `Ngủ sau: ${timeString}`;
+}
+
+_removeCountdownUI(timerId) {
+    const id = this._getCountdownUIId(timerId);
+    const display = document.getElementById(id);
+    if (display) {
+        display.remove();
+        if (this.countdownDisplayElement === display) {
+            this.countdownDisplayElement = null;
+        }
+    }
+}
 
   executeTimerActions(actions) {
     console.log('[SleepTimer] Executing actions:', actions);
@@ -228,6 +296,7 @@ class SleepTimer {
     if (timer) {
       clearInterval(timer.intervalId);
       this.timers.delete(timerId);
+      this._removeCountdownUI(timerId); // Remove countdown UI when timer is cancelled
       console.log(`[SleepTimer] Timer ${timerId} cancelled.`);
       this.showNotification('Hẹn giờ ngủ đã được hủy.', 'info');
       return true;
@@ -245,10 +314,17 @@ class SleepTimer {
   }
 
   destroy() {
-    // Clear all active timers
-    this.timers.forEach(timer => clearInterval(timer.intervalId));
+    // Clear all active timers and their UIs
+    this.timers.forEach(timer => {
+      clearInterval(timer.intervalId);
+      this._removeCountdownUI(timer.id);
+    });
     this.timers.clear();
-    console.log('[SleepTimer] All timers cleared. Destroyed.');
+    if (this.countdownDisplayElement) { // Should be null if all individual UIs removed, but as a safeguard
+        this.countdownDisplayElement.remove();
+        this.countdownDisplayElement = null;
+    }
+    console.log('[SleepTimer] All timers cleared and countdown UIs removed. Destroyed.');
   }
 }
 

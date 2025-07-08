@@ -158,12 +158,66 @@
   margin-top: 10px; /* Add some space above the button */
 }
 
-.parental-controls button:hover {
-  background: #0056b3; /* From user spec */
+.pc-pin-prompt button:hover, .pc-section button:hover {
+  background-color: #528bce; /* Darker shade for hover */
+}
+
+.pc-section button.pc-remove-category-btn {
+    background-color: #e06c75; /* Reddish for remove */
+    font-size: 0.9em;
+    padding: 6px 10px;
+    margin-left: 10px;
+}
+.pc-section button.pc-remove-category-btn:hover {
+    background-color: #c94a53;
+}
+
+.pc-save-button {
+  background-color: #98c379 !important; /* Green for save */
+  padding: 12px 20px !important;
+  font-size: 1.1em;
+  width: 100%;
+  margin-top: 20px;
+}
+.pc-save-button:hover {
+  background-color: #80a965 !important;
+}
+
+.pc-categories-list {
+    margin-top: 10px;
+    max-height: 150px;
+    overflow-y: auto;
+    border: 1px solid #4b5263;
+    padding: 10px;
+    border-radius: 4px;
+    background-color: #21252b;
+}
+
+.pc-categories-list ul {
+  list-style-type: none;
+  padding-left: 0;
+  margin: 0;
+}
+.pc-categories-list li {
+  background-color: #323842;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  border-radius: 3px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #abb2bf;
+}
+.pc-categories-list li:last-child {
+    margin-bottom: 0;
+}
+.pc-categories-list .pc-category-name {
+  flex-grow: 1;
+  margin-right: 10px; /* Space before remove button */
 }
 
 /* Styles for specific Parental Controls notifications, if different from general .notification */
-.parental-control-notice { /* This class was used in the more complex JS, might not be used by simple UI */
+.parental-control-notice { /* This class is used in the JS */
   background: rgba(255, 152, 0, 0.9); /* Amber/Orange color */
   border-left: 5px solid #d97700;
   bottom: 80px; /* Position distinct from errors */
@@ -177,3 +231,116 @@
   background: rgba(0,0,0,0.7);
 }
 */
+
+/* Enhanced Voice Search Indicators */
+.voice-listening-indicator {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 20px;
+  background-color: rgba(0, 0, 0, 0.85);
+  color: white;
+  border-radius: 25px; /* More rounded */
+  z-index: 1001; /* Above other notifications */
+  display: flex;
+  align-items: center;
+  font-family: Arial, sans-serif;
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out, bottom 0.3s ease-in-out;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+.voice-listening-indicator.active {
+  opacity: 1;
+  bottom: 30px; /* Animate in */
+}
+
+.voice-icon-container {
+  margin-right: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.microphone-icon svg {
+  width: 28px; /* Adjust size as needed */
+  height: 28px;
+  fill: #61dafb; /* A vibrant color */
+  animation: pulseMicrophone 1.5s infinite ease-in-out;
+}
+
+@keyframes pulseMicrophone {
+  0% { transform: scale(1); opacity: 0.7; }
+  50% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); opacity: 0.7; }
+}
+
+.voice-transcript-interim {
+  font-size: 1em;
+  color: #f0f0f0;
+}
+
+.voice-search-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 1005; /* High z-index */
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+  font-family: Arial, sans-serif;
+}
+
+.voice-search-overlay.active {
+  opacity: 1;
+}
+
+.voice-search-spinner {
+  border: 5px solid #f3f3f3; /* Light grey */
+  border-top: 5px solid #3498db; /* Blue */
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  animation: spin 1s linear infinite;
+  margin-bottom: 20px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.voice-search-query-text {
+  color: white;
+  font-size: 1.2em;
+  text-shadow: 1px 1px 2px black;
+}
+
+/* Sleep Timer Countdown UI */
+.sleep-timer-countdown {
+  position: fixed;
+  top: 10px; /* Default, can be adjusted */
+  right: 10px; /* Default, can be adjusted */
+  padding: 8px 12px;
+  background-color: rgba(0, 0, 0, 0.75);
+  color: #ffffff;
+  font-family: 'Consolas', 'Monaco', monospace; /* Monospaced font for timer */
+  font-size: 0.9em;
+  border-radius: 4px;
+  z-index: 2000; /* High z-index to be visible */
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+  pointer-events: none; /* Don't intercept clicks */
+}
+
+.sleep-timer-countdown.active { /* Class to show the countdown */
+  opacity: 1;
+}
