@@ -50,74 +50,130 @@
   pointer-events: none; /* So it doesn't interfere with other gestures */
 }
 
-/* Styles for Parental Controls example (can be expanded) */
-.parental-controls {
-  max-width: 400px;
-  margin: 20px auto; /* Centered */
-  padding: 20px;
-  background: #2c2c2c; /* Darker background */
-  color: white;
+/* Styles for Parental Controls (Detailed UI version) */
+.parental-controls-ui-host { /* The main container where renderUI appends its content */
+  max-width: 500px;
+  margin: 20px auto;
+  padding: 15px;
+  background-color: #282c34; /* Darker theme */
+  color: #abb2bf; /* Light grey text */
   border-radius: 8px;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+  font-family: Arial, sans-serif;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.5);
 }
 
-.parental-controls h3 {
+.parental-controls-wrapper {
+  /* If needed for an extra inner wrapper, otherwise parental-controls-ui-host is the main one */
+}
+
+.parental-controls-ui-host h2 {
+  color: #61afef; /* Light blue for headings */
+  border-bottom: 1px solid #444;
+  padding-bottom: 10px;
   margin-top: 0;
-  color: #eee;
+  margin-bottom: 25px;
+  text-align: center;
 }
 
-.parental-controls label {
+.pc-section {
+  margin-bottom: 25px;
+  padding: 15px;
+  border: 1px solid #3b4048;
+  border-radius: 6px;
+  background-color: #323842; /* Slightly lighter section background */
+}
+
+.pc-section legend {
+  font-size: 1.1em;
+  font-weight: bold;
+  color: #98c379; /* Green for legend text */
+  padding: 0 10px;
+  margin-left: 5px;
+}
+
+.pc-toggle-label {
+  display: flex;
+  align-items: center;
+  font-size: 1.1em;
+  color: #e5c07b; /* Yellowish for important toggles */
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+
+.pc-toggle-label input[type="checkbox"] {
+  width: 22px; /* Larger checkbox */
+  height: 22px;
+  margin-right: 12px;
+  accent-color: #61afef; /* Match heading color for checkbox */
+}
+
+.pc-pin-prompt, .pc-section {
+  /* .pc-section already defined above, this is for common label/input styling */
+}
+
+.pc-pin-prompt label, .pc-section label {
   display: block;
-  margin-top: 15px;
-  margin-bottom: 5px;
-  color: #ccc;
+  margin-top: 12px;
+  margin-bottom: 6px;
+  font-size: 0.95em;
+  color: #abb2bf; /* Default text color */
 }
 
-.parental-controls input[type="text"],
-.parental-controls input[type="number"],
-.parental-controls input[type="time"],
-.parental-controls input[type="password"],
-.parental-controls select {
-  width: calc(100% - 16px); /* Account for padding */
-  padding: 8px;
-  margin-bottom: 10px; /* Consistent margin */
-  background-color: #3f3f3f;
-  color: white;
-  border: 1px solid #555;
+.pc-pin-prompt input[type="password"],
+.pc-section input[type="password"],
+.pc-section input[type="text"],
+.pc-section input[type="number"],
+.pc-section input[type="time"],
+.pc-section select {
+  width: calc(100% - 22px); /* Full width minus padding */
+  padding: 10px;
+  background-color: #21252b; /* Darker input background */
+  border: 1px solid #4b5263;
+  color: #abb2bf;
   border-radius: 4px;
-  box-sizing: border-box; /* Ensures padding doesn't expand width */
+  margin-bottom: 12px;
+  box-sizing: border-box;
+  font-size: 1em;
 }
 
-.parental-controls button {
-  background-color: #007bff;
+.pc-pin-prompt input[type="password"]:focus,
+.pc-section input:focus,
+.pc-section select:focus {
+  border-color: #61afef; /* Highlight on focus */
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(97, 175, 239, 0.3);
+}
+
+
+.pc-pin-prompt button, .pc-section button {
+  padding: 10px 18px;
+  margin-top: 8px;
+  margin-right: 8px;
+  background-color: #61afef; /* Primary button color */
   color: white;
-  padding: 10px 15px;
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  margin-top: 10px;
+  font-size: 1em; /* Ensure button text is readable */
+  margin-top: 10px; /* Add some space above the button */
 }
 
 .parental-controls button:hover {
-  background-color: #0056b3;
+  background: #0056b3; /* From user spec */
 }
 
-/* Hiding elements, e.g. for parental controls */
-.video-item[style*="display: none;"] {
-  /* Could add specific styling for hidden items if needed for debugging, otherwise just display:none is fine */
+/* Styles for specific Parental Controls notifications, if different from general .notification */
+.parental-control-notice { /* This class was used in the more complex JS, might not be used by simple UI */
+  background: rgba(255, 152, 0, 0.9); /* Amber/Orange color */
+  border-left: 5px solid #d97700;
+  bottom: 80px; /* Position distinct from errors */
 }
 
-.unused {
-  /* Styles for elements marked as unused by MemoryManager, if any visual indication is needed before removal */
-}
-
-/* Styles for ::cue (subtitles) - from SubtitleManager */
-/* These will be dynamically injected by SubtitleManager, but good to have a base here for reference */
+/* Styles for ::cue (subtitles) - from SubtitleManager (reference) */
 /*
 ::cue {
-  font-size: 16px; // Default, will be overridden by JS
-  color: #ffffff; // Default
-  background: rgba(0,0,0,0.7); // Default
-  // position property is more complex, handled by JS
+  font-size: 16px;
+  color: #ffffff;
+  background: rgba(0,0,0,0.7);
 }
 */

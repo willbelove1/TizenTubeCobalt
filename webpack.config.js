@@ -4,27 +4,33 @@ const webpack = require('webpack'); // Assuming webpack is a project dependency
 const TerserPlugin = require('terser-webpack-plugin'); // Assuming terser-webpack-plugin is a project dependency
 const CompressionPlugin = require('compression-webpack-plugin'); // Assuming compression-webpack-plugin is a project dependency
 // For CSS handling:
-// const MiniCssExtractPlugin = require('mini-css-extract-plugin'); // If extracting CSS to a file
+const MiniCssExtractPlugin = require('mini-css-extract-plugin'); // Assuming this is a dev dependency
 
 module.exports = (env, argv) => {
   const isProduction = argv.mode === 'production';
 
+  // Define a base path for our own JS modules if they are not in './src'
+  // For now, assuming they are at the root or imported by an entry point in './src'
+  const appSrcPath = path.resolve(__dirname); // Or path.resolve(__dirname, 'js_modules') if they are in a subfolder
+
   return {
     mode: isProduction ? 'production' : 'development',
     entry: {
-      // Assuming all JS modules created are imported directly or indirectly by a main entry point.
-      // If they are separate applications or need to be distinct bundles, more entry points would be needed.
-      main: './src/index.js', // Placeholder: This file would import our app logic/modules
-      // Example: If your main application script that uses the new modules is at the root:
-      // main: './app.js', // Or whatever your main JS entry point is called
-      // worker: './src/worker.js', // If there's a dedicated web worker script
+      // All our new JS files (playlist-sync.js, voice-search.js etc.) are ES6 modules.
+      // They should be imported by a main application entry point.
+      // If 'src/index.js' doesn't exist or doesn't import them, Webpack won't find them.
+      // For this exercise, let's assume there's an 'app.js' at the root that imports all necessary modules.
+      // If your actual entry point is different, this needs to be changed.
+      main: './app.js', // Assuming an app.js at root imports all our modules.
+                        // Or, if they are imported by the original './src/index.js', keep that.
+      // worker: './src/worker.js',
     },
     output: {
-      path: path.resolve(__dirname, 'dist'), // Output directory
+      path: path.resolve(__dirname, 'dist'),
       filename: isProduction ? '[name].[contenthash].js' : '[name].bundle.js',
       chunkFilename: isProduction ? '[name].[contenthash].chunk.js' : '[name].chunk.js',
-      publicPath: '/', // Adjust if assets are served from a specific path
-      clean: true // Clean the output directory before emit.
+      publicPath: '/',
+      clean: true
     },
     optimization: {
       minimize: isProduction,
@@ -32,126 +38,105 @@ module.exports = (env, argv) => {
         new TerserPlugin({
           terserOptions: {
             compress: {
-              drop_console: isProduction, // Drop console logs only in production
+              drop_console: isProduction,
               drop_debugger: isProduction,
-              // Consider carefully which functions are truly "pure"
-              // pure_funcs: isProduction ? ['console.log', 'console.warn', 'console.info'] : [],
+              // Keep console.error and console.warn, remove others in prod.
+              pure_funcs: isProduction ? ['console.log', 'console.info', 'console.debug', 'console.trace'] : [],
             },
-            mangle: true, // Default is true
+            mangle: true,
             output: {
-              comments: false, // Remove comments in production
+              comments: false,
             },
           },
-          extractComments: false, // Do not extract comments to a separate file
+          extractComments: false,
         }),
       ],
       splitChunks: {
-        chunks: 'all', // Apply to all chunks (initial, async)
+        chunks: 'all',
         cacheGroups: {
-          vendor: { // Bundle node_modules into a vendor chunk
-            test: /[\\/]node_modules[\\/](idb|hammerjs|other-npm-lib)/, // Specify key vendors or use a more general regex
-            name: 'vendors',
+          // Generic vendor chunk for all node_modules
+          vendor: {
+            test: /[\\/]node_modules[\\/]/,
+            name: 'vendors', // Will include idb, hammerjs, and any other npm deps
             chunks: 'all',
-            priority: -10, // Higher priority for vendor chunks
+            priority: -10,
             reuseExistingChunk: true,
           },
-          // Example: common modules used across multiple entry points
-          // common: {
-          //   name: 'common',
-          //   minChunks: 2,
-          //   priority: -20,
+          // Chunk for our own shared utilities if they grow large and are used in multiple entry points
+          // appUtils: {
+          //   test: (module) => {
+          //     return module.resource && module.resource.startsWith(appSrcPath) &&
+          //            !/[\\/]node_modules[\\/]/.test(module.resource) &&
+          //            (module.resource.endsWith('error-handler.js') || module.resource.endsWith('api-utils.js'));
+          //   },
+          //   name: 'app-utils',
+          //   chunks: 'all',
+          //   priority: -5,
           //   reuseExistingChunk: true,
           // },
         },
       },
-      // runtimeChunk: 'single', // Optional: Creates a runtime chunk to be shared for all generated chunks.
+      runtimeChunk: 'single', // Good for long-term caching if multiple entry points
     },
     plugins: [
       new webpack.DefinePlugin({
         'process.env.NODE_ENV': JSON.stringify(isProduction ? 'production' : 'development'),
-        // Add other global constants if needed
-        // 'APP_VERSION': JSON.stringify(require('./package.json').version),
       }),
-      ...(isProduction ? [ // Plugins only for production
+      ...(isProduction ? [
+        new MiniCssExtractPlugin({ // Extract CSS into separate files for production
+          filename: 'css/[name].[contenthash].css',
+          chunkFilename: 'css/[id].[contenthash].css',
+        }),
         new CompressionPlugin({
           filename: '[path][base].gz',
           algorithm: 'gzip',
           test: /\.(js|css|html|svg)$/,
-          threshold: 8192, // Only assets bigger than 8KiB
-          minRatio: 0.8    // Only if compression makes it 80% of original size or smaller
+          threshold: 8192,
+          minRatio: 0.8
         }),
-        // Add other production plugins here (e.g., BundleAnalyzerPlugin)
-        // const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
-        // new BundleAnalyzerPlugin(),
       ] : [
-        // Development specific plugins (e.g., HotModuleReplacementPlugin if using webpack-dev-server)
-        // new webpack.HotModuleReplacementPlugin(),
+        // new webpack.HotModuleReplacementPlugin(), // If using webpack-dev-server
       ]),
-      // If extracting CSS to a file:
-      // new MiniCssExtractPlugin({
-      //   filename: isProduction ? '[name].[contenthash].css' : '[name].css',
-      //   chunkFilename: isProduction ? '[id].[contenthash].css' : '[id].css',
-      // }),
     ],
     module: {
       rules: [
         {
           test: /\.js$/,
-          exclude: /node_modules/, // Important: Don't transpile node_modules
+          include: appSrcPath, // Process JS files in our source directory (and its subdirectories)
+          exclude: /node_modules/,
           use: {
-            loader: 'babel-loader', // Assuming babel-loader and presets are project dependencies
+            loader: 'babel-loader',
             options: {
               presets: [
                 ['@babel/preset-env', {
-                  // targets: "> 0.25%, not dead", // Example: specify browser targets
-                  // useBuiltIns: 'usage', // Automatically adds polyfills where needed
-                  // corejs: 3, // Specify core-js version if using useBuiltIns
+                  useBuiltIns: 'usage', // Add polyfills based on usage
+                  corejs: { version: 3, proposals: true }, // Specify core-js version
+                  // targets: "defaults", // Or specify browser targets
                 }]
               ],
-              // plugins: ['@babel/plugin-transform-runtime'] // For helpers, reducing duplication
+              // plugins: ['@babel/plugin-transform-runtime'] // Optional for helpers
             }
           }
         },
         {
           test: /\.css$/,
-          // For CSS, you can either bundle it into JS (style-loader) or extract to a separate file (MiniCssExtractPlugin.loader)
-          // Option 1: Bundle CSS into JS (creates <style> tags)
-          use: ['style-loader', 'css-loader'], // Assuming style-loader, css-loader are dependencies
-          // Option 2: Extract CSS to a separate file (recommended for production)
-          // use: [
-          //   isProduction ? MiniCssExtractPlugin.loader : 'style-loader',
-          //   'css-loader'
-          // ],
+          use: [
+            isProduction ? MiniCssExtractPlugin.loader : 'style-loader', // Extract CSS in prod, inline in dev
+            'css-loader' // Processes @import and url()
+            // Optional: 'postcss-loader' for autoprefixing etc.
+          ],
         },
-        // Add loaders for other asset types if needed (images, fonts, etc.)
-        // {
-        //   test: /\.(png|svg|jpg|jpeg|gif)$/i,
-        //   type: 'asset/resource',
-        // },
-        // {
-        //   test: /\.(woff|woff2|eot|ttf|otf)$/i,
-        //   type: 'asset/resource',
-        // },
       ]
     },
-    devtool: isProduction ? 'source-map' : 'eval-source-map', // 'source-map' for prod, 'eval-source-map' for dev
-    // externals: { // Example if idb or hammerjs were loaded via CDN
-    //   'idb': 'idb', // Expects global 'idb' variable
-    //   'hammerjs': 'Hammer' // Expects global 'Hammer' variable
-    // },
+    devtool: isProduction ? 'source-map' : 'eval-cheap-module-source-map', // More performant devtool for dev
     resolve: {
-      extensions: ['.js', '.json'], // Default extensions webpack will look for
-      // alias: { // Useful for simplifying import paths
-      //   '@components': path.resolve(__dirname, 'src/components/'),
-      //   '@utils': path.resolve(__dirname, 'src/utils/'),
+      extensions: ['.js', '.json'],
+      // alias: { // Example: If our modules were in a 'src' or 'js' folder
+      //   '@modules': path.resolve(__dirname, 'src/js_modules/'),
       // }
     },
-    // performance: { // Optional: configure performance hints
-    //   hints: isProduction ? 'warning' : false,
-    //   maxAssetSize: 512000, // 500 KiB
-    //   maxEntrypointSize: 512000, // 500 KiB
-    // },
-    // target: 'web', // Default, can be 'node', 'electron-renderer', etc.
-    // stats: 'minimal', // Control verbosity of webpack output
+    performance: {
+      hints: isProduction ? 'warning' : false,
+    },
   };
 };
